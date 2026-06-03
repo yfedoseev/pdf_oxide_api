@@ -1,0 +1,11 @@
+# hadolint config for pdf_oxide_api's Dockerfile.
+#
+# DL3018 (pin apk package versions): intentionally ignored. The only `apk add`
+# is `musl-dev` in the *builder* stage on a digest-pinned `rust:1.88-alpine3.21`
+# base. That stage is discarded — it never ships in the final Chainguard
+# `static` runtime image — so pinning the transient toolchain package adds churn
+# without affecting the produced artifact. Renovate keeps the base digest fresh.
+ignored:
+  - DL3018
+
+failure-threshold: warning

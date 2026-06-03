@@ -1,0 +1,19 @@
+# Keep the build context tiny: faster uploads, fewer cache busts, no leaks.
+/target
+**/*.rs.bk
+.git
+.github
+docs
+*.md
+!Cargo.toml
+!Cargo.lock
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*.pfx
+docker-compose*.yml
+Dockerfile
+.dockerignore
+recipe.json

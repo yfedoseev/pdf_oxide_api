@@ -1,0 +1,120 @@
+name: Quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel any in-progress run on the same ref when a new one starts.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # Warnings-as-errors for every cargo invocation in this workflow
+  # (build / check / clippy / doc / feature-powerset). Closes the gap
+  # so a new warning anywhere reds the build.
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # TOML formatting + lint (Cargo.toml et al.)
+  taplo:
+    name: TOML format + lint (taplo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: taplo
+      - name: Install taplo
+        uses: taiki-e/install-action@50b4a718b59c718df4ef27a3b445f86cd57b9f00 # v2
+        with:
+          tool: taplo-cli
+      - name: Check TOML formatting
+        run: taplo fmt --check
+      - name: Lint TOML
+        run: taplo lint
+
+  # Unused-dependency check.
+  machete:
+    name: Unused deps (cargo-machete)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Install cargo-machete
+        uses: taiki-e/install-action@50b4a718b59c718df4ef27a3b445f86cd57b9f00 # v2
+        with:
+          tool: cargo-machete
+      - name: Check for unused dependencies
+        run: cargo machete
+
+  # Feature powerset: check + clippy over every combination of
+  # default / swagger-ui / otel. Catches cfg-rot in feature-gated code
+  # (e.g. the swagger-ui /docs route, the otel exporter).
+  features-powerset:
+    name: Feature powerset (cargo-hack)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: hack
+      - name: Install cargo-hack
+        uses: taiki-e/install-action@50b4a718b59c718df4ef27a3b445f86cd57b9f00 # v2
+        with:
+          tool: cargo-hack
+      - name: Check feature powerset
+        run: cargo hack check --feature-powerset --no-dev-deps
+      - name: Clippy feature powerset
+        run: cargo hack clippy --feature-powerset --no-dev-deps -- -D warnings
+
+  # Documentation builds clean: broken intra-doc links and rustdoc
+  # warnings fail the job.
+  docs:
+    name: Docs (rustdoc)
+    runs-on: ubuntu-latest
+    env:
+      RUSTDOCFLAGS: "-D warnings"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          key: docs
+      - name: Build documentation (warnings as errors)
+        run: cargo doc --no-deps --all-features
+
+  # Spell-check source, docs, and config. Domain words live in .typos.toml.
+  typos:
+    name: Spell check (typos)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Check spelling
+        uses: crate-ci/typos@f8a58b6b53f2279f71eb605f03a4ae4d10608f45 # v1.47.0
+
+  # Enforce no unsafe code. The crate-level `#![forbid(unsafe_code)]`
+  # attribute (see summary) makes this a hard compiler guarantee; this
+  # grep gate is a belt-and-braces check that also catches unsafe in any
+  # future module before it can compile.
+  unsafe:
+    name: No unsafe code
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Reject any unsafe in src/
+        run: |
+          if grep -rn '\bunsafe\b' src/; then
+            echo "::error::unsafe found in src/ -- this service must stay unsafe-free."
+            exit 1
+          fi
+          echo "No unsafe code in src/."

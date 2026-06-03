@@ -1,0 +1,119 @@
+name: Upstream pdf_oxide bump
+
+# Fully-automatic rebuild on a new pdf_oxide engine release.
+#
+# Flow: pdf_oxide release -> repository_dispatch `pdf-oxide-released` -> THIS
+# workflow opens a release-bump PR that (a) pins the new pdf_oxide, (b) bumps
+# THIS service's patch version, (c) syncs openapi/llms versions, (d) prepends a
+# CHANGELOG section. Auto-merge waits for all CI gates, then merges to main.
+# `auto-tag.yml` then tags the new version, which fires `release.yml` to build
+# and publish the multi-arch image to GHCR + Docker Hub. NO human step.
+#
+# Requires a RELEASE_TOKEN secret (a fine-grained PAT with Contents R/W +
+# Pull requests R/W) so the bot PR/commits trigger CI and the downstream tag
+# (a plain GITHUB_TOKEN cannot trigger workflows). Falls back to GITHUB_TOKEN if
+# RELEASE_TOKEN is unset — in which case CI won't run on the PR and auto-merge
+# won't complete, so RELEASE_TOKEN is required for the hands-off flow.
+
+on:
+  repository_dispatch:
+    types: [pdf-oxide-released]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'pdf_oxide version to pin (e.g. 0.3.57)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Bump pdf_oxide -> ${{ github.event.client_payload.version || inputs.version }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      # RELEASE_TOKEN = a fine-grained PAT (Contents R/W + Pull requests R/W on
+      # this repo). Needed so the bot PR/commits trigger CI and so auto-merge
+      # completes (a plain GITHUB_TOKEN cannot trigger downstream workflows).
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Resolve target pdf_oxide version
+        id: v
+        run: |
+          V="${{ github.event.client_payload.version || inputs.version }}"
+          [ -n "$V" ] || { echo "::error::no version supplied"; exit 1; }
+          echo "engine=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Pin engine, bump API version, sync files + CHANGELOG
+        id: bump
+        run: |
+          set -euo pipefail
+          ENGINE="${{ steps.v.outputs.engine }}"
+          MINOR="$(echo "$ENGINE" | cut -d. -f1-2)"
+
+          # 1. Pin the new engine.
+          cargo add pdf_oxide@"$MINOR"
+          cargo update -p pdf_oxide --precise "$ENGINE"
+
+          # 2. Bump THIS service's patch version.
+          CUR=$(grep '^version = ' Cargo.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+          IFS=. read -r MA MI PA <<< "$CUR"
+          NEW="$MA.$MI.$((PA + 1))"
+          echo "api=$NEW" >> "$GITHUB_OUTPUT"
+
+          # 3. Sync every version-bearing file (the release `validate` gate checks these).
+          sed -i -E "0,/^version = \"$CUR\"/s//version = \"$NEW\"/" Cargo.toml
+          tmp=$(mktemp); jq --arg v "$NEW" '.info.version=$v' openapi.json > "$tmp" && mv "$tmp" openapi.json
+          sed -i -E "0,/^([[:space:]]+version:[[:space:]]*).*/s//\1$NEW/" openapi.yaml
+          sed -i -E "s/Current version: [0-9]+\.[0-9]+\.[0-9]+/Current version: $NEW/" llms.txt
+
+          # 4. Prepend a CHANGELOG section (anchored subtitle + ### — satisfies
+          #    the strict notes gate). Built with printf + inserted via `sed r`
+          #    so it stays pure shell inside this YAML block.
+          DATE=$(date +%F)
+          {
+            printf '\n## [%s] - %s\n\n' "$NEW" "$DATE"
+            printf '> Rebuilt against pdf_oxide %s. No API changes; the HTTP contract is unchanged.\n\n' "$ENGINE"
+            printf '### Changed\n- Bump the bundled pdf_oxide engine to %s.\n' "$ENGINE"
+          } > /tmp/changelog-section.md
+          sed -i '/^## \[Unreleased\]$/r /tmp/changelog-section.md' CHANGELOG.md
+
+          # 5. Refresh the lockfile for the new root version.
+          cargo build
+
+      - name: Open auto-merge release PR
+        id: cpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          branch: bot/pdf-oxide-${{ steps.v.outputs.engine }}
+          commit-message: "chore(release): v${{ steps.bump.outputs.api }} (pdf_oxide ${{ steps.v.outputs.engine }})"
+          title: "chore(release): v${{ steps.bump.outputs.api }} — rebuild on pdf_oxide ${{ steps.v.outputs.engine }}"
+          body: |
+            Automated rebuild triggered by an upstream `pdf_oxide` ${{ steps.v.outputs.engine }} release.
+
+            - Pins `pdf_oxide` to ${{ steps.v.outputs.engine }}
+            - Bumps the service to **v${{ steps.bump.outputs.api }}** (Cargo.toml, openapi, llms.txt)
+            - Adds the CHANGELOG section
+
+            Full CI must pass before this auto-merges. On merge, `auto-tag.yml` tags
+            `v${{ steps.bump.outputs.api }}` and `release.yml` publishes the image to GHCR + Docker Hub.
+          labels: dependencies, pdf_oxide-bump, release
+
+      - name: Enable auto-merge
+        if: steps.cpr.outputs.pull-request-operation == 'created'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+        run: gh pr merge --squash --auto "${{ steps.cpr.outputs.pull-request-number }}"

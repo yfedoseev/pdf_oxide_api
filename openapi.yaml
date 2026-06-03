@@ -1,0 +1,532 @@
+openapi: 3.1.0
+info:
+  title: pdf_oxide_api
+  version: 0.1.0
+  description: >
+    Stateless single-shot REST service wrapping the pdf_oxide library.
+    No PDF data is persisted server-side. PDF in -> result out.
+
+
+    Every data endpoint accepts the PDF in one of three encodings:
+    multipart/form-data (a `file` part), application/json (a base64 PDF in
+    `pdf_base64`, or `pdfs_base64` for merge), or a raw PDF body
+    (`application/pdf`). Endpoint parameters (`pages`, `detect_headings`,
+    `flatten`) are sent as top-level multipart text parts, top-level JSON keys,
+    or URL query parameters — they are NOT nested under an `options` object.
+
+
+    This hand-authored document is the source-of-truth contract; the running
+    service serves an identical copy at /openapi.json and /openapi.yaml.
+  license:
+    name: MIT OR Apache-2.0
+servers:
+  - url: /
+tags:
+  - name: extract
+  - name: forms
+  - name: documents
+  - name: pipeline
+  - name: ops
+paths:
+  /v1/extract/text:
+    post:
+      tags: [extract]
+      summary: Extract plain text from a PDF
+      operationId: extractText
+      requestBody: { $ref: '#/components/requestBodies/PdfWithPages' }
+      responses:
+        '200':
+          description: Extracted text
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExtractTextResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '408': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/extract/markdown:
+    post:
+      tags: [extract]
+      summary: Convert a PDF to structured Markdown
+      operationId: extractMarkdown
+      requestBody: { $ref: '#/components/requestBodies/PdfWithPagesAndHeadings' }
+      responses:
+        '200':
+          description: Markdown
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExtractMarkdownResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '408': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/extract/html:
+    post:
+      tags: [extract]
+      summary: Convert a PDF to HTML
+      operationId: extractHtml
+      requestBody: { $ref: '#/components/requestBodies/PdfWithPagesAndHeadings' }
+      responses:
+        '200':
+          description: HTML
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExtractHtmlResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '408': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/forms/fields:
+    post:
+      tags: [forms]
+      summary: Introspect AcroForm fields
+      operationId: formsFields
+      requestBody: { $ref: '#/components/requestBodies/PdfOnly' }
+      responses:
+        '200':
+          description: Field list
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FieldsResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/forms/fill:
+    post:
+      tags: [forms]
+      summary: Fill AcroForm fields (UTF-8 / CJK first-class)
+      operationId: formsFill
+      description: >
+        Fills AcroForm fields and returns the filled PDF. Field values are
+        passed to the engine verbatim as UTF-8, so Japanese/CJK text round-trips
+        without transcoding. Set `flatten=true` to bake values in.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, fields]
+              properties:
+                file: { type: string, format: binary }
+                fields: { $ref: '#/components/schemas/FieldMap' }
+                flatten: { type: boolean, default: false }
+          application/json:
+            schema:
+              type: object
+              required: [pdf_base64, fields]
+              properties:
+                pdf_base64: { type: string, contentEncoding: base64 }
+                fields: { $ref: '#/components/schemas/FieldMap' }
+                flatten: { type: boolean, default: false }
+      responses:
+        '200':
+          description: The filled PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/docs/merge:
+    post:
+      tags: [documents]
+      summary: Merge two or more PDFs in upload order
+      operationId: merge
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: array
+                  minItems: 2
+                  items: { type: string, format: binary }
+          application/json:
+            schema:
+              type: object
+              required: [pdfs_base64]
+              properties:
+                pdfs_base64:
+                  type: array
+                  minItems: 2
+                  items: { type: string, contentEncoding: base64 }
+      responses:
+        '200':
+          description: Merged PDF
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/docs/split:
+    post:
+      tags: [documents]
+      summary: Split a PDF into one PDF per page (ZIP)
+      operationId: split
+      description: >
+        Returns a ZIP archive containing one single-page PDF per selected page
+        (named `page-0001.pdf`, ...). Use `pages` to restrict the set; absent
+        means every page.
+      requestBody: { $ref: '#/components/requestBodies/PdfWithPages' }
+      responses:
+        '200':
+          description: ZIP of single-page PDFs
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/docs/metadata:
+    post:
+      tags: [documents]
+      summary: Read document metadata
+      operationId: metadata
+      requestBody: { $ref: '#/components/requestBodies/PdfOnly' }
+      responses:
+        '200':
+          description: Metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MetadataResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/docs/page-info:
+    post:
+      tags: [documents]
+      summary: Per-page geometry (size and rotation)
+      operationId: pagesInfo
+      requestBody: { $ref: '#/components/requestBodies/PdfOnly' }
+      responses:
+        '200':
+          description: Page info
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PagesInfoResponse' }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /v1/pipeline:
+    post:
+      tags: [pipeline]
+      summary: Chain operations over one in-memory PDF
+      operationId: pipeline
+      description: >
+        Runs an ordered list of operations against a single PDF. `fill` is a
+        transform (PDF -> PDF). The data ops `extract_text`, `extract_markdown`,
+        `extract_html`, `metadata`, and `page_info` are terminal and must be the
+        last step. A pipeline ending in `fill` returns the resulting PDF; a
+        pipeline ending in a data op returns that op's JSON.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, operations]
+              properties:
+                file: { type: string, format: binary }
+                operations: { $ref: '#/components/schemas/Operations' }
+          application/json:
+            schema:
+              type: object
+              required: [pdf_base64, operations]
+              properties:
+                pdf_base64: { type: string, contentEncoding: base64 }
+                operations: { $ref: '#/components/schemas/Operations' }
+      responses:
+        '200':
+          description: Final PDF (pipeline ended in a transform) or final JSON (ended in a data op)
+          content:
+            application/pdf: { schema: { type: string, format: binary } }
+            application/json: { schema: {} }
+        '400': { $ref: '#/components/responses/Error' }
+        '401': { $ref: '#/components/responses/Error' }
+        '413': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+
+  /healthz:
+    get:
+      tags: [ops]
+      summary: Liveness probe
+      operationId: healthz
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ok }
+
+  /readyz:
+    get:
+      tags: [ops]
+      summary: Readiness probe
+      operationId: readyz
+      responses:
+        '200':
+          description: Ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: ready }
+        '503':
+          description: Draining (shutting down)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, const: draining }
+
+  /version:
+    get:
+      tags: [ops]
+      summary: Service and pdf_oxide versions
+      operationId: version
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/VersionResponse' }
+
+  /metrics:
+    get:
+      tags: [ops]
+      summary: Prometheus metrics
+      operationId: metrics
+      responses:
+        '200':
+          description: Prometheus text exposition format
+          content:
+            text/plain:
+              schema: { type: string }
+
+components:
+  requestBodies:
+    PdfOnly:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file: { type: string, format: binary }
+        application/json:
+          schema:
+            type: object
+            required: [pdf_base64]
+            properties:
+              pdf_base64: { type: string, contentEncoding: base64 }
+        application/pdf:
+          schema: { type: string, format: binary }
+    PdfWithPages:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file: { type: string, format: binary }
+              pages: { $ref: '#/components/schemas/PagesParam' }
+        application/json:
+          schema:
+            type: object
+            required: [pdf_base64]
+            properties:
+              pdf_base64: { type: string, contentEncoding: base64 }
+              pages: { $ref: '#/components/schemas/PagesParam' }
+        application/pdf:
+          schema: { type: string, format: binary }
+    PdfWithPagesAndHeadings:
+      required: true
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [file]
+            properties:
+              file: { type: string, format: binary }
+              pages: { $ref: '#/components/schemas/PagesParam' }
+              detect_headings: { type: boolean, default: true }
+        application/json:
+          schema:
+            type: object
+            required: [pdf_base64]
+            properties:
+              pdf_base64: { type: string, contentEncoding: base64 }
+              pages: { $ref: '#/components/schemas/PagesParam' }
+              detect_headings: { type: boolean, default: true }
+        application/pdf:
+          schema: { type: string, format: binary }
+  responses:
+    Error:
+      description: Error envelope (RFC 9457 compatible)
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+  schemas:
+    PagesParam:
+      type: string
+      description: >
+        1-based page selector. Absent means all pages. A single number ("2")
+        selects that page; a string like "1-3,5" selects those pages/ranges.
+      examples: ["1-3,5"]
+    FieldMap:
+      type: object
+      additionalProperties:
+        oneOf:
+          - { type: string }
+          - { type: number }
+          - { type: boolean }
+          - { type: array, items: { type: string } }
+          - { type: 'null' }
+      description: >
+        AcroForm field name -> value. Strings/numbers/booleans set a value, an
+        array of strings sets a multi-choice selection, null clears the field.
+        UTF-8 / CJK values are stored verbatim. In multipart this part is a
+        JSON-object string.
+    Operations:
+      type: array
+      minItems: 1
+      maxItems: 16
+      description: >
+        Ordered pipeline steps. In multipart this part is a JSON-array string.
+      items:
+        type: object
+        required: [op]
+        properties:
+          op:
+            type: string
+            enum: [fill, extract_text, extract_markdown, extract_html, metadata, page_info]
+          fields: { $ref: '#/components/schemas/FieldMap' }
+          flatten: { type: boolean, default: false }
+          pages: { $ref: '#/components/schemas/PagesParam' }
+          detect_headings: { type: boolean, default: true }
+        additionalProperties: true
+    ExtractTextResponse:
+      type: object
+      required: [text, page_count, pages_extracted, pdf_oxide_version]
+      properties:
+        text: { type: string }
+        page_count: { type: integer }
+        pages_extracted: { type: integer }
+        pdf_oxide_version: { type: string }
+    ExtractMarkdownResponse:
+      type: object
+      required: [markdown, page_count, pages_extracted, pdf_oxide_version]
+      properties:
+        markdown: { type: string }
+        page_count: { type: integer }
+        pages_extracted: { type: integer }
+        pdf_oxide_version: { type: string }
+    ExtractHtmlResponse:
+      type: object
+      required: [html, page_count, pages_extracted, pdf_oxide_version]
+      properties:
+        html: { type: string }
+        page_count: { type: integer }
+        pages_extracted: { type: integer }
+        pdf_oxide_version: { type: string }
+    FieldsResponse:
+      type: object
+      required: [field_count, fields]
+      properties:
+        field_count: { type: integer }
+        fields:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              full_name: { type: string }
+              type:
+                type: string
+                enum: [button, text, choice, signature, unknown]
+              value: {}
+              read_only: { type: boolean }
+    MetadataResponse:
+      type: object
+      properties:
+        title: { type: [string, "null"] }
+        author: { type: [string, "null"] }
+        subject: { type: [string, "null"] }
+        keywords: { type: [string, "null"] }
+        producer: { type: [string, "null"] }
+        creation_date: { type: [string, "null"] }
+    PagesInfoResponse:
+      type: object
+      required: [page_count, pages]
+      properties:
+        page_count: { type: integer }
+        pages:
+          type: array
+          items:
+            type: object
+            properties:
+              index: { type: integer, description: "0-based page index" }
+              width: { type: number, description: "media-box width in PDF points" }
+              height: { type: number, description: "media-box height in PDF points" }
+              rotation: { type: integer }
+    VersionResponse:
+      type: object
+      required: [service, version, pdf_oxide_version]
+      properties:
+        service: { type: string }
+        version: { type: string }
+        pdf_oxide_version: { type: string }
+    ErrorEnvelope:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum:
+                - INVALID_REQUEST
+                - UNAUTHORIZED
+                - PAYLOAD_TOO_LARGE
+                - PDF_ENCRYPTED
+                - MALFORMED_PDF
+                - UNSUPPORTED_PDF_FEATURE
+                - PDF_PROCESSING_FAILED
+                - LIMIT_EXCEEDED
+                - NOT_READY
+                - INTERNAL_ERROR
+            message: { type: string }
+            details: { type: [string, "null"] }
+            request_id: { type: [string, "null"] }

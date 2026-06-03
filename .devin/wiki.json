@@ -1,0 +1,62 @@
+{
+  "repo_notes": [
+    {
+      "content": "pdf_oxide_api is the fastest, smallest, most secure self-hostable PDF REST API. It is a stateless single-shot HTTP+JSON service wrapping the pdf_oxide Rust engine (crates.io 0.3, MIT OR Apache-2.0). Core differentiators: PDF in -> result out with zero server-side persistence (no database, no retained temp files, no telemetry); a single static Rust binary shipped in a distroless container (measured ~14.5 MB, far smaller than JVM-based Stirling-PDF); first-class UTF-8 AcroForm form-filling — CJK, Arabic, Hebrew, any script — written as UTF-16BE so values round-trip verbatim with no mojibake (the exact case where Stirling-PDF historically struggled; the underlying engine encoding bug was fixed in pdf_oxide 0.3.59). Run it with `docker run --rm -p 8080:8080 ghcr.io/yfedoseev/pdf_oxide:latest`.",
+      "author": "maintainer"
+    },
+    {
+      "content": "Design is Option A from founding Issue #611: STATELESS single-shot REST. Every request is self-contained — the client uploads a PDF (multipart/form-data) plus JSON parameters, the server processes it in memory and returns the result, and nothing is held between requests. This is intentional for confidential/personal data and self-hosted automation: there is no attack surface of stored documents, no per-user state, and horizontal scaling is trivial (any replica can serve any request). Workload target is small-to-medium PDFs at low concurrency, driven by automation platforms like n8n and Dify.",
+      "author": "maintainer"
+    },
+    {
+      "content": "Endpoint surface (all under /v1): extraction — POST /v1/extract/text, /v1/extract/markdown, /v1/extract/html; forms — POST /v1/forms/fields (read AcroForm field names/types/values) and POST /v1/forms/fill (write field values, return filled PDF, full UTF-8/CJK); document ops — POST /v1/docs/merge, /v1/docs/split, /v1/docs/metadata, /v1/docs/page-info; and POST /v1/pipeline which chains multiple ops in one request (e.g. fill then extract markdown). Operational endpoints: GET /healthz, GET /readyz, GET /version, GET /metrics (Prometheus). Input is accepted in three encodings: multipart/form-data (file part), application/json (pdf_base64 / pdfs_base64), or a raw PDF body. The OpenAPI 3.1 spec lives at the repo root (openapi.yaml / openapi.json) and is served by the running container at /openapi.yaml and /openapi.json; an interactive Scalar reference is served at /docs. The hand-authored openapi.yaml is the single source of truth for the contract.",
+      "author": "maintainer"
+    },
+    {
+      "content": "Security and self-hosting posture: the container runs as a non-root user on a read-only root filesystem with no shell (distroless/scratch). Requests have configurable body-size limits and per-request timeouts to bound memory/CPU. Optional API-key bearer-token auth can be enabled via env var; it is off by default for trusted-network/localhost use and recommended-on for any exposed deployment. No data leaves the machine. The release pipeline mirrors the pdf_oxide repo's supply-chain hardening: pinned action SHAs, minimal GITHUB_TOKEN permissions, and OpenSSF Scorecard. The Docker image is automatically rebuilt and republished when a new pdf_oxide engine version is released.",
+      "author": "maintainer"
+    },
+    {
+      "content": "Why not Stirling-PDF? Stirling-PDF is the popular self-hosted PDF toolkit but is a JVM application with a large image and broad mutable feature set. pdf_oxide_api is purpose-built for programmatic, stateless API use: a tiny Rust binary, sub-second cold start, reliable UTF-8/CJK AcroForm filling, and a JSON-first contract designed for n8n/Dify workflow nodes rather than an interactive browser UI. It does fewer things, but does the automation-critical ones (extract, fill, merge/split, pipeline) smaller, faster, and with no stored state.",
+      "author": "maintainer"
+    }
+  ],
+  "pages": [
+    {
+      "title": "Overview and Positioning",
+      "purpose": "Explain what pdf_oxide_api is (stateless single-shot PDF REST API over the pdf_oxide engine), who it is for (n8n/Dify automation, self-hosters handling confidential PDFs), and the three pillars: fastest, smallest, most secure."
+    },
+    {
+      "title": "Quick Start",
+      "purpose": "docker run one-liner, first curl request to POST /v1/extract/text, health check, and reading the result. Get a user to a successful response in under two minutes."
+    },
+    {
+      "title": "API Reference",
+      "purpose": "Document every endpoint from the OpenAPI 3.1 spec: request shape (multipart PDF + JSON params), response shape, status codes, and the RFC 9457 problem+json error model. Cover extraction, forms, document ops, and pipeline."
+    },
+    {
+      "title": "Form Filling and Japanese/CJK Support",
+      "purpose": "Deep-dive on POST /v1/forms/fields and /v1/forms/fill, including UTF-8 and Japanese/CJK AcroForm values, font handling, and worked examples. This is the key validation target and primary differentiator vs Stirling-PDF."
+    },
+    {
+      "title": "Pipeline",
+      "purpose": "Document POST /v1/pipeline: how to chain operations (e.g. fill -> extract markdown) in a single request, the step schema, and error handling when a step fails."
+    },
+    {
+      "title": "Self-Hosting and Security",
+      "purpose": "Document the stateless no-persistence model, distroless non-root container, body-size limits, timeouts, optional API-key auth, docker-compose and Kubernetes deployment, and reverse-proxy (Caddy/Traefik/nginx) examples."
+    },
+    {
+      "title": "Integrations: n8n and Dify",
+      "purpose": "Concrete recipes for wiring pdf_oxide_api into n8n HTTP Request nodes and Dify custom tools / OpenAPI import, including auth headers and multipart file handling."
+    },
+    {
+      "title": "Comparison vs Stirling-PDF",
+      "purpose": "Honest, sourced comparison table: image size, runtime, cold start, statelessness, CJK form-fill, API ergonomics, scope. Establish when to choose each tool."
+    },
+    {
+      "title": "Architecture and Release Automation",
+      "purpose": "Request lifecycle, how pdf_oxide is embedded, why stateless, and the CI/CD that auto-rebuilds the Docker image when a new pdf_oxide version is published to crates.io."
+    }
+  ]
+}

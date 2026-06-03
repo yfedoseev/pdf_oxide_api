@@ -1,0 +1,20 @@
+# gitleaks configuration for pdf_oxide_api.
+#
+# Extends the upstream default ruleset (so all real secret detectors stay on)
+# and adds one narrow allowlist: user-facing documentation files contain
+# illustrative `Authorization: Bearer <example>` snippets that are teaching
+# examples, not real credentials. Without this, the default `curl-auth-header`
+# rule flags those example tokens (e.g. docs/src/auth.md). Source code and
+# configuration are still fully scanned.
+
+title = "pdf_oxide_api gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Illustrative example tokens in user-facing docs are not real secrets"
+paths = [
+  '''docs/src/.*\.md''',
+  '''README\.md''',
+]

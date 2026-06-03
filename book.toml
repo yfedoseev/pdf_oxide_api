@@ -1,0 +1,19 @@
+[book]
+title = "pdf_oxide_api — the self-hostable PDF REST API"
+description = "Stateless single-shot PDF REST API: extract text/markdown/html, fill AcroForm fields (Japanese/CJK), merge/split, pipeline. Self-hosted, Docker, no persistence."
+authors = ["pdf_oxide_api contributors"]
+language = "en"
+src = "docs/src"
+
+[build]
+build-dir = "docs/book"
+
+[output.html]
+default-theme = "rust"
+git-repository-url = "https://github.com/yfedoseev/pdf_oxide_api"
+edit-url-template = "https://github.com/yfedoseev/pdf_oxide_api/edit/main/{path}"
+# Served from the custom domain pdf.oxide.fyi at the site root.
+site-url = "/"
+
+[output.html.search]
+enable = true

@@ -1,0 +1,8 @@
+name: "pdf_oxide_api CodeQL config"
+
+# Test code carries intentional fixtures (hardcoded sample bytes, fixed
+# addresses) that don't reach the production HTTP paths.
+paths-ignore:
+  - "**/tests/**"
+  - "**/*test*.rs"
+  - "src/tests.rs"

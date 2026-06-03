@@ -1,0 +1,43 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    ":semanticCommitScope(deps)",
+    "helpers:pinGitHubActionDigests"
+  ],
+  "timezone": "UTC",
+  "schedule": ["* 2-6 * * *"],
+  "labels": ["dependencies"],
+  "osvVulnerabilityAlerts": true,
+  "lockFileMaintenance": { "enabled": true },
+  "cargo": { "enabled": true },
+  "packageRules": [
+    {
+      "description": "Fast-track + auto-merge the headline dependency.",
+      "matchManagers": ["cargo"],
+      "matchPackageNames": ["pdf_oxide"],
+      "labels": ["dependencies", "pdf_oxide-bump"],
+      "automerge": true,
+      "automergeStrategy": "squash",
+      "minimumReleaseAge": "0 days",
+      "schedule": ["* * * * *"]
+    },
+    {
+      "description": "Keep pinned action SHAs current; auto-merge digest pins.",
+      "matchManagers": ["github-actions"],
+      "pinDigests": true,
+      "automerge": true,
+      "automergeStrategy": "squash"
+    },
+    {
+      "description": "Other crates: group, but require human review.",
+      "matchManagers": ["cargo"],
+      "excludePackageNames": ["pdf_oxide"],
+      "groupName": "rust dependencies",
+      "minimumReleaseAge": "3 days"
+    }
+  ],
+  "vulnerabilityAlerts": { "labels": ["security"], "automerge": false }
+}

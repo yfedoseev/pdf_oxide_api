@@ -1,0 +1,49 @@
+name: Auto-tag release
+
+# Closes the fully-automatic loop: when a release-bump commit lands on main
+# (from pdf-oxide-release-trigger.yml's auto-merged PR), tag the new version.
+# Pushing the tag with the RELEASE_TOKEN PAT triggers release.yml, which builds
+# and publishes the image to GHCR + Docker Hub. A plain GITHUB_TOKEN cannot
+# trigger release.yml, so RELEASE_TOKEN is required for the hands-off flow.
+
+on:
+  push:
+    branches: [main]
+    paths: [Cargo.toml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: auto-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    # Only the bot's release-bump commits auto-tag — a manual push to main never
+    # auto-publishes.
+    if: startsWith(github.event.head_commit.message, 'chore(release):')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # RELEASE_TOKEN = the same fine-grained PAT used by the bump workflow.
+      # Pushing the tag with it (not GITHUB_TOKEN) is what triggers release.yml.
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
+          fetch-depth: 0
+
+      - name: Tag the new version if it doesn't exist yet
+        run: |
+          set -euo pipefail
+          V=$(grep '^version = ' Cargo.toml | head -1 | sed -E 's/version = "([^"]+)"/\1/')
+          TAG="v$V"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q "$TAG"; then
+            echo "tag $TAG already exists — nothing to do"; exit 0
+          fi
+          git config user.name "pdf-oxide-bot[bot]"
+          git config user.email "pdf-oxide-bot@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "pushed $TAG — release.yml will build + publish to GHCR + Docker Hub"

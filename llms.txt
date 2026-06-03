@@ -1,0 +1,78 @@
+# pdf_oxide_api — The Fastest, Smallest, Most Secure Self-Hostable PDF REST API
+
+> A stateless single-shot REST+JSON HTTP API for PDF processing, wrapping the
+> pdf_oxide Rust engine. Extract text/markdown/html, read and fill AcroForm
+> fields (any UTF-8 script — CJK, Arabic, Hebrew, …), merge/split, read metadata and
+> page geometry, and chain operations in one POST /v1/pipeline call.
+> Every data endpoint accepts three input encodings: multipart/form-data,
+> application/json with a base64 PDF, or a raw PDF body.
+> PDF in -> result out. Nothing is stored: no database, no temp files held
+> between requests, no telemetry. Safe-by-default, self-hosted, confidential.
+> Single static Rust binary in a distroless container (~14.5 MB image).
+> MIT / Apache-2.0 license. Current version: 0.1.0. Engine: pdf_oxide 0.3.
+
+- Run (GHCR): `docker run --rm -p 8080:8080 ghcr.io/yfedoseev/pdf_oxide:latest`
+- Run (Docker Hub): `docker run --rm -p 8080:8080 yfedoseev/pdf_oxide:latest`
+- Pull: `docker pull ghcr.io/yfedoseev/pdf_oxide:0.1.0` (or `docker pull yfedoseev/pdf_oxide:0.1.0`)
+- OpenAPI spec (source of truth, repo root): https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/openapi.yaml
+- OpenAPI spec (served by the running container): http://localhost:8080/openapi.json and /openapi.yaml
+- Interactive API reference (served by the running container): http://localhost:8080/docs
+- Documentation: https://pdf.oxide.fyi/
+
+## Getting Started
+
+- [Quick Start](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/quick-start.md): docker run, the three input encodings, first curl request, health check
+- [Self-Hosting Guide](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/self-hosting.md): docker-compose, resource limits, reverse proxy, hardening
+- [Authentication](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/auth.md): optional API-key bearer token, when to enable it
+- [README](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/README.md): overview, install, quick start, curl examples
+
+## API Reference
+
+- [OpenAPI 3.1 Spec](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/openapi.yaml): machine-readable contract for every endpoint
+- [API Reference page](https://pdf.oxide.fyi/api-reference.html): endpoint-by-endpoint docs; the running container also serves an interactive Scalar UI at /docs
+- [Error Model](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/errors.md): RFC 9457 problem+json error shape, status codes
+
+## Endpoints
+
+- POST /v1/extract/text: Extract plain text from an uploaded PDF (optional `pages`)
+- POST /v1/extract/markdown: Convert a PDF to structured Markdown (`detect_headings` on by default)
+- POST /v1/extract/html: Convert a PDF to HTML (`detect_headings`, `pages`)
+- POST /v1/forms/fields: List AcroForm fields, types, current values, and read-only flag
+- POST /v1/forms/fill: Fill AcroForm fields and return the filled PDF. Field map is a `fields` JSON object; values round-trip verbatim as UTF-8 — CJK, Arabic, Hebrew, any script — written as UTF-16BE so they render without mojibake (fixed in pdf_oxide 0.3.59). Optional `flatten`
+- POST /v1/docs/merge: Merge two or more uploaded PDFs (in upload order) into one
+- POST /v1/docs/split: Split a PDF into one PDF per selected page, returned as a ZIP (optional `pages`)
+- POST /v1/docs/metadata: Read document metadata (title, author, subject, keywords, producer, creation date)
+- POST /v1/docs/page-info: Per-page index, width, height, rotation
+- POST /v1/pipeline: Chain operations in one request via an `operations` array (e.g. fill -> extract_markdown). Data ops (extract_text/extract_markdown/extract_html/metadata/page_info) must be the last step
+- GET /healthz: Liveness probe
+- GET /readyz: Readiness probe (503 while draining)
+- GET /version: API + engine (pdf_oxide) versions
+- GET /metrics: Prometheus metrics
+- GET /openapi.json, /openapi.yaml: OpenAPI 3.1 contract
+- GET /docs: Interactive API reference (Scalar; behind the `swagger-ui` build feature, on by default)
+
+## Self-Hosting and Security
+
+- [Security Model](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/security.md): stateless design, no persistence, request size limits, timeouts, non-root distroless container, read-only filesystem
+- [Deployment](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/deployment.md): docker-compose, Kubernetes, Traefik/Caddy/nginx reverse proxy examples
+- [Configuration](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/configuration.md): PDF_OXIDE_API_* environment variables, limits, logging
+
+## Integrations
+
+- [n8n](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/integrations-n8n.md): HTTP Request node recipes for fill and extract
+- [Dify](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/integrations-dify.md): custom tool / OpenAPI import for Dify workflows
+- [Comparison vs Stirling-PDF](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/vs-stirling-pdf.md): footprint, speed, CJK form-fill, statelessness
+
+## Optional
+
+- [Architecture](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/architecture.md): request lifecycle, why stateless, how pdf_oxide is embedded
+- [Changelog](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/CHANGELOG.md): version history and release notes
+- [FAQ](https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/docs/src/faq.md): common questions, citation-friendly answers
+
+## Links
+
+- GitHub: https://github.com/yfedoseev/pdf_oxide_api
+- Container image: https://github.com/yfedoseev/pdf_oxide_api/pkgs/container/pdf_oxide
+- Engine library (pdf_oxide): https://github.com/yfedoseev/pdf_oxide
+- crates.io (engine): https://crates.io/crates/pdf_oxide
+- Documentation: https://pdf.oxide.fyi/

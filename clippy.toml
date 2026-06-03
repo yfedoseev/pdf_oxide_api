@@ -1,0 +1,30 @@
+# Clippy configuration for pdf_oxide_api
+# See https://rust-lang.github.io/rust-clippy/master/index.html
+#
+# Adapted from the pdf_oxide engine's clippy.toml. This is a small, simple
+# stateless HTTP service, so the thresholds are kept conservative.
+
+# Cognitive complexity threshold
+cognitive-complexity-threshold = 25
+
+# Maximum number of single char bindings
+single-char-binding-names-threshold = 4
+
+# Maximum number of function arguments
+too-many-arguments-threshold = 7
+
+# Maximum size of types to copy by value
+trivial-copy-size-limit = 128
+
+# Minimum array size to trigger large-types-passed-by-value
+pass-by-value-size-limit = 256
+
+# Maximum size for an enum variant
+enum-variant-size-threshold = 200
+
+# Maximum complexity score for a type
+type-complexity-threshold = 250
+
+# This is a binary, not a published library, so there is no exported API to
+# keep stable — let clippy suggest breaking changes freely.
+avoid-breaking-exported-api = false

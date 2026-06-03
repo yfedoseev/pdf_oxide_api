@@ -1,0 +1,68 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        name: check yaml files
+      - id: check-toml
+        name: check toml files
+      - id: check-added-large-files
+        args: ["--maxkb=512"]
+
+  # TOML formatting (Cargo.toml, deny.toml, *.toml) — matches the CI taplo gate.
+  - repo: https://github.com/ComPWA/taplo-pre-commit
+    rev: v0.9.3
+    hooks:
+      - id: taplo-format
+      - id: taplo-lint
+
+  # Spell-checking across the repo (docs, source, configs).
+  - repo: https://github.com/crate-ci/typos
+    rev: v1.47.0
+    hooks:
+      - id: typos
+
+  # https://docs.rs/cargo-deny/latest/cargo_deny/#pre-commit-hook
+  - repo: https://github.com/EmbarkStudios/cargo-deny
+    rev: 0.19.8
+    hooks:
+      - id: cargo-deny
+        args: ["check", "--all-features"]
+
+  - repo: local
+    hooks:
+      # Rust formatting — mirrors the `fmt` CI job.
+      - id: cargo-fmt
+        name: cargo fmt
+        entry: cargo fmt --all -- --check
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      # Clippy on BOTH feature sets — cfg-gated code (e.g. the swagger-ui /docs
+      # route) can pass one and fail the other. Mirrors the `clippy` CI job.
+      - id: cargo-clippy
+        name: cargo clippy (all-features)
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      - id: cargo-clippy-no-default
+        name: cargo clippy (no-default-features)
+        entry: cargo clippy --all-targets --no-default-features -- -D warnings
+        language: system
+        pass_filenames: false
+        types: [rust]
+
+      # CHANGELOG release-notes contract — the same strict check the CI
+      # `changelog` job and the release workflow enforce, run pre-commit so a
+      # version bump without well-formed notes never reaches CI.
+      - id: changelog-release-notes
+        name: changelog release notes (strict)
+        entry: bash -c 'V=$(grep "^version = " Cargo.toml | head -1 | sed "s/version = \"\(.*\)\"/\1/"); .github/scripts/extract-release-notes.sh --check "$V"'
+        language: system
+        pass_filenames: false
+        files: ^(CHANGELOG\.md|Cargo\.toml)$

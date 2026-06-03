@@ -1,0 +1,105 @@
+[package]
+name = "pdf_oxide_api"
+version = "0.1.0"
+edition = "2021"
+# MSRV floor. axum 0.8 needs >= 1.80; 1.82 gives headroom. The pinned
+# toolchain (rust-toolchain.toml) and the Docker builder use a newer stable.
+rust-version = "1.82"
+license = "MIT OR Apache-2.0"
+description = "The fastest, smallest, most secure self-hostable PDF REST API — a stateless single-shot HTTP service wrapping the pdf_oxide Rust engine."
+repository = "https://github.com/yfedoseev/pdf_oxide_api"
+homepage = "https://github.com/yfedoseev/pdf_oxide_api"
+documentation = "https://github.com/yfedoseev/pdf_oxide_api"
+readme = "README.md"
+keywords = ["pdf", "rest-api", "self-hosted", "acroform", "pdf-extraction"]
+categories = ["web-programming::http-server", "text-processing"]
+
+# The image ENTRYPOINT and PDF_OXIDE_API_ADDR contract both depend on this name.
+[[bin]]
+name = "pdf_oxide_api"
+path = "src/main.rs"
+
+[features]
+# The raw /openapi.json + /openapi.yaml (the n8n/Dify machine contract) are
+# ALWAYS served. The `swagger-ui` feature additionally serves a /docs HTML
+# viewer (Scalar via CDN). Disable it for a fully air-gapped image:
+#   cargo build --release --no-default-features
+default = ["swagger-ui"]
+swagger-ui = []
+# Opt-in OpenTelemetry OTLP export (kept out of the default image so the slim
+# build emits nothing externally; ship a separate `:otel` tag with this on).
+otel = []
+
+[dependencies]
+# --- the library this service wraps (default features only: pure-Rust,
+# static-musl friendly; NO ocr/ml/gpu/rendering) ---
+pdf_oxide = "0.3"
+
+# --- HTTP framework + runtime ---
+axum = { version = "0.8", features = ["multipart", "macros"] }
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros", "signal", "sync"] }
+tower-http = { version = "0.6", features = [
+    "trace",
+    "timeout",
+    "limit",
+    "compression-gzip",
+    "compression-br",
+    "catch-panic",
+    "cors",
+    "request-id",
+    "sensitive-headers",
+] }
+
+# --- CPU offload for blocking pdf_oxide work (bounded rayon pool, NOT
+# spawn_blocking — see docs/releases/plans framework-decision.md §4) ---
+rayon = "1.10"
+
+# --- serialization ---
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+
+# --- zip archive for /v1/docs/split (one PDF per page/range). Pure-Rust
+# deflate (no zlib C dep) keeps the static-musl build clean. ---
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# --- OpenAPI 3.1 contract is shipped as a static, version-controlled
+# `openapi.yaml`/`openapi.json` (single source of truth, contract-tested),
+# served verbatim — no code-first derive deps to keep the build lean. ---
+
+# --- errors ---
+thiserror = "2"
+anyhow = "1"    # startup / main only
+
+# --- observability ---
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+metrics = "0.24"
+metrics-exporter-prometheus = { version = "0.18", default-features = false }
+
+# --- allocator (musl perf; keep for the static image) ---
+mimalloc = { version = "0.1", default-features = false }
+
+[dev-dependencies]
+# In-process HTTP harness for integration tests (see testing-and-quality.md).
+axum-test = "18"
+tokio = { version = "1.45", features = ["rt-multi-thread", "macros"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
+# LOAD-BEARING: the rayon worker's std::panic::catch_unwind (so one malformed
+# PDF cannot poison a pool thread / kill the process) only works with
+# unwinding. Do NOT switch to panic = "abort".
+panic = "unwind"
+
+# Crate-level lint policy ("warnings are errors" for OUR code, applied in plain
+# `cargo build`/`test`/`clippy` and locally — NOT to dependencies, avoiding the
+# RUSTFLAGS=-Dwarnings footgun of failing on third-party warnings).
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }

@@ -1,0 +1,65 @@
+# docker-compose.yml — pdf_oxide_api, hardened defaults for self-hosting.
+# `docker compose up` gives a safe-by-default, no-persistence deployment.
+# Optional observability stack: `docker compose --profile observability up`.
+services:
+  pdf_oxide_api:
+    image: ghcr.io/yfedoseev/pdf_oxide:0.1.0
+    # In production pin by digest: ghcr.io/.../pdf_oxide_api@sha256:...
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080" # bind localhost; front with a reverse proxy for TLS
+    environment:
+      PDF_OXIDE_API_ADDR: "0.0.0.0:8080"
+      PDF_OXIDE_API_MAX_BODY_BYTES: "33554432" # 32 MiB
+      PDF_OXIDE_API_REQUEST_TIMEOUT_SECS: "30"
+      PDF_OXIDE_API_MAX_INFLIGHT: "32"
+      RUST_LOG: "info"
+    # --- hardening (enforces #611 no-persistence) ---
+    read_only: true            # immutable rootfs; nothing persisted
+    user: "65532:65532"        # nonroot
+    cap_drop: [ALL]            # static binary needs no Linux capabilities
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=256m # scratch only; wiped on stop
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/pdf_oxide_api", "healthcheck"]
+      interval: 30s
+      timeout: 3s
+      start_period: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ---- Optional observability profile -------------------------------------
+  # Prometheus scrapes /metrics; Grafana ships a checked-in dashboard.
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ["observability"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:9090:9090"
+    volumes:
+      - ./deploy/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - pdf_oxide_api
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ["observability"]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+    depends_on:
+      - prometheus

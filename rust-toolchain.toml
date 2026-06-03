@@ -1,0 +1,6 @@
+[toolchain]
+# Pinned in lockstep with the Docker builder image (rust:1.88-alpine) and CI.
+# Bump only together with the MSRV floor in Cargo.toml (`rust-version`).
+channel = "1.88.0"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

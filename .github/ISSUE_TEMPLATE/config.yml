@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/yfedoseev/pdf_oxide_api/security/advisories/new
+    about: Please report security issues privately via a GitHub Security Advisory (see SECURITY.md), not a public issue.
+  - name: Engine (pdf_oxide) bug
+    url: https://github.com/yfedoseev/pdf_oxide/issues
+    about: Parsing/extraction/form-fill correctness lives in the pdf_oxide engine — report it there.

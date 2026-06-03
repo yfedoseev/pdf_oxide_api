@@ -1,0 +1,208 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g. v0.1.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Never cancel an in-flight release (publishing is irreversible); serialize.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# The published Docker IMAGE is named `pdf_oxide` (a runnable container IS the
+# service); the cargo crate/binary stays `pdf_oxide_api`. Published to BOTH
+# GHCR and Docker Hub. Docker Hub needs DOCKERHUB_USERNAME + DOCKERHUB_TOKEN
+# repo secrets.
+env:
+  GHCR_IMAGE: ghcr.io/yfedoseev/pdf_oxide
+  DOCKERHUB_IMAGE: docker.io/yfedoseev/pdf_oxide
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      pdf_oxide_version: ${{ steps.pov.outputs.version }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0 # need history for the tag-on-main ancestry check
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+
+      - name: Cargo.toml version
+        id: v
+        run: |
+          V=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "Detected version: $V"
+
+      - name: Tag must match Cargo.toml version
+        if: github.event_name == 'push'
+        run: |
+          [ "${{ github.ref_name }}" = "v${{ steps.v.outputs.version }}" ] \
+            || { echo "::error::tag '${{ github.ref_name }}' != Cargo.toml version 'v${{ steps.v.outputs.version }}'"; exit 1; }
+
+      - name: Version consistency across the repo
+        run: |
+          V="${{ steps.v.outputs.version }}"
+          OAPI_JSON=$(jq -r '.info.version' openapi.json)
+          OAPI_YAML=$(grep -E '^[[:space:]]+version:' openapi.yaml | head -1 | sed -E 's/.*version:[[:space:]]*//; s/["'"'"' ]//g')
+          LLMS=$(grep -oE 'Current version: [0-9]+\.[0-9]+\.[0-9]+' llms.txt | head -1 | sed 's/Current version: //')
+          errs=0
+          for pair in "openapi.json:$OAPI_JSON" "openapi.yaml:$OAPI_YAML" "llms.txt:$LLMS"; do
+            f=${pair%%:*}; ver=${pair#*:}
+            if [ "$ver" != "$V" ]; then echo "::error::$f version '$ver' != Cargo.toml '$V'"; errs=$((errs+1)); fi
+          done
+          [ "$errs" -eq 0 ] && echo "✓ all version strings match $V"
+          exit $errs
+
+      - name: Release tag must point at a commit on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main --quiet
+          if ! git merge-base --is-ancestor "$(git rev-parse HEAD)" origin/main; then
+            echo "::error::release tags must be cut from a commit on main; merge first, then tag"; exit 1
+          fi
+          echo "✓ tag is on main"
+
+      - name: CHANGELOG has proper release notes (strict)
+        run: |
+          chmod +x .github/scripts/extract-release-notes.sh
+          .github/scripts/extract-release-notes.sh --check "${{ steps.v.outputs.version }}"
+
+      - name: Resolve pinned pdf_oxide version (for the image label)
+        id: pov
+        run: |
+          V=$(cargo metadata --format-version 1 --locked \
+              | jq -r '.packages[] | select(.name=="pdf_oxide") | .version')
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+  release-image:
+    name: Build, push, sign, attest
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write     # create GitHub release
+      packages: write      # push to GHCR
+      id-token: write      # cosign keyless OIDC + provenance attestation
+      attestations: write  # actions/attest-build-provenance
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: docker/setup-qemu-action@06116385d9baf250c9f4dcb4858b16962ea869c3 # v4.1.0
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Docker metadata (tags + labels)
+        id: meta
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
+        with:
+          images: |
+            ${{ env.GHCR_IMAGE }}
+            ${{ env.DOCKERHUB_IMAGE }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=pdf_oxide
+            org.opencontainers.image.description=The fastest, smallest, most secure self-hostable PDF REST API (pdf_oxide engine)
+            org.opencontainers.image.source=https://github.com/yfedoseev/pdf_oxide_api
+            org.opencontainers.image.licenses=MIT OR Apache-2.0
+            fyi.oxide.pdf_oxide.version=${{ needs.validate.outputs.pdf_oxide_version }}
+
+      - name: Build + push (multi-arch)
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: true
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            PDF_OXIDE_VERSION=${{ needs.validate.outputs.pdf_oxide_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Sign image by digest (keyless) — both registries
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign sign --yes "${GHCR_IMAGE}@${DIGEST}"
+          cosign sign --yes "${DOCKERHUB_IMAGE}@${DIGEST}"
+
+      - name: Attest build provenance (SLSA) — GHCR
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ${{ env.GHCR_IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - name: Generate SBOM (Syft, CycloneDX JSON)
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ env.GHCR_IMAGE }}@${{ steps.build.outputs.digest }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      - name: Attest SBOM to image — both registries
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign attest --yes --predicate sbom.cdx.json --type cyclonedx "${GHCR_IMAGE}@${DIGEST}"
+          cosign attest --yes --predicate sbom.cdx.json --type cyclonedx "${DOCKERHUB_IMAGE}@${DIGEST}"
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          chmod +x .github/scripts/extract-release-notes.sh
+          .github/scripts/extract-release-notes.sh "${{ needs.validate.outputs.version }}"
+
+      - name: Read + re-validate release title
+        id: title
+        # Defense-in-depth: the script already fails on a missing/stale subtitle;
+        # re-check the title shape so a script regression can't publish a bare title.
+        run: |
+          TITLE="$(cat release-title.txt)"
+          PREFIX="v${{ needs.validate.outputs.version }} | "
+          if [ "${TITLE#"$PREFIX"}" = "$TITLE" ]; then
+            echo "::error::release title '$TITLE' lacks prefix '$PREFIX'"; exit 1
+          fi
+          [ "${#TITLE}" -ge 20 ] || { echo "::error::release title suspiciously short: '$TITLE'"; exit 1; }
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
+        with:
+          name: ${{ steps.title.outputs.title }}
+          body_path: release-notes.md
+          files: sbom.cdx.json
+          draft: false
+          prerelease: ${{ contains(needs.validate.outputs.version, '-') }}

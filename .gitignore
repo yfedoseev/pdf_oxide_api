@@ -1,0 +1,74 @@
+# Rust
+/target/
+**/*.rs.bk
+*.pdb
+
+# Cargo.lock — COMMITTED for binaries (reproducible `--locked` builds,
+# cargo-audit / cargo-deny gate the exact graph). Do NOT ignore it.
+
+# Build artifacts
+*.o
+*.a
+*.rlib
+
+# Generated cargo-chef recipe (produced inside the Docker planner stage)
+recipe.json
+
+# IDEs / editors
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+*.code-workspace
+
+# OS
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Environment files (may contain API keys / secrets — never commit)
+.env
+.env.local
+.env.*.local
+
+# Secrets — keys and certs must never be committed
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Coverage reports
+lcov.info
+cobertura.xml
+tarpaulin-report.html
+*.profraw
+*.profdata
+
+# Documentation builds (mdBook output)
+docs/book/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+temp/
+
+# AI assistant configuration (internal development tool)
+.claude/
+.agents/
+.cursor/
+CLAUDE.md
+
+# Local release planning workspace (not version-controlled)
+docs/releases/

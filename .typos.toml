@@ -1,0 +1,24 @@
+# Spell-check allow-list for pdf_oxide_api.
+# See https://github.com/crate-ci/typos
+#
+# Domain words and identifiers that are not English dictionary words but are
+# correct in this codebase. Keep this list tight — only add genuine
+# false-positives, never to paper over a real typo.
+
+[default.extend-words]
+# Project / domain vocabulary.
+acroform = "acroform"
+oxide = "oxide"
+mojibake = "mojibake"
+distroless = "distroless"
+rustls = "rustls"
+mimalloc = "mimalloc"
+nosniff = "nosniff"
+serde = "serde"
+otel = "otel"
+# `ba` shows up in base64 / fixture data and other short tokens.
+ba = "ba"
+
+[files]
+# Generated / vendored artifacts that should not be spell-checked.
+extend-exclude = ["Cargo.lock", "openapi.json", "openapi.yaml", "*.pdf"]

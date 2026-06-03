@@ -1,0 +1,205 @@
+name: API Contract
+
+# Detect BREAKING CHANGES to the OpenAPI HTTP contract between the PR head and
+# the base branch — the HTTP-service analog of cargo-semver-checks for a Rust
+# library. On a breaking change the job fails AND posts a PR comment summarising
+# the change (the "API change notification"). A `breaking-change-ok` (or
+# `api-break`) PR label overrides the failure for intentional, documented breaks.
+#
+# Also: lint that openapi.json is internally valid, and that openapi.json stays
+# in sync with the hand-authored openapi.yaml source-of-truth.
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: api-contract-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api-contract:
+    name: OpenAPI breaking-change check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # post the change-notification comment
+    steps:
+      # PR head checkout (no persisted credentials; we only read the tree).
+      - name: Checkout PR head
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      # ---- 1. openapi.json <-> openapi.yaml sync -------------------------------
+      # The YAML is the hand-authored source of truth; the JSON is its committed
+      # serialisation. They must describe the same document.
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: '3.x'
+
+      - name: Check openapi.json is in sync with openapi.yaml
+        run: |
+          python3 - <<'PY'
+          import json, sys
+          try:
+              import yaml
+          except ImportError:
+              import subprocess
+              subprocess.check_call([sys.executable, "-m", "pip", "install", "--quiet", "pyyaml"])
+              import yaml
+
+          with open("openapi.yaml", "r", encoding="utf-8") as f:
+              y = yaml.safe_load(f)
+          with open("openapi.json", "r", encoding="utf-8") as f:
+              j = json.load(f)
+
+          if y != j:
+              print("::error file=openapi.json::openapi.json is OUT OF SYNC with openapi.yaml.")
+              # Surface a coarse diff to make the fix obvious.
+              yk, jk = set(y.get("paths", {})), set(j.get("paths", {}))
+              if yk != jk:
+                  print(f"  paths only in yaml: {sorted(yk - jk)}")
+                  print(f"  paths only in json: {sorted(jk - yk)}")
+              vy, vj = y.get("info", {}).get("version"), j.get("info", {}).get("version")
+              if vy != vj:
+                  print(f"  info.version differs: yaml={vy!r} json={vj!r}")
+              print("Regenerate openapi.json from openapi.yaml and commit it.")
+              sys.exit(1)
+          print("openapi.json and openapi.yaml are in sync.")
+          PY
+
+      # ---- 2. Lint: openapi.json must be internally valid ----------------------
+      - name: Validate openapi.json
+        uses: oasdiff/oasdiff-action/validate@1d160e38379728af331e223ae2ba978046283b4d # v0.0.50
+        with:
+          spec: openapi.json
+          fail-on: ERR
+          # No remote $refs in this self-contained contract; block them (SSRF-safe).
+          allow-external-refs: false
+
+      # ---- 3. Fetch the base-branch openapi.json -------------------------------
+      # Robust: if the base branch has no openapi.json yet (e.g. the file is being
+      # introduced in this PR), there is nothing to diff against — skip gracefully.
+      - name: Fetch base-branch openapi.json
+        id: base
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth 1 origin "$BASE_SHA" || git fetch --no-tags origin "$BASE_REF"
+          if git cat-file -e "$BASE_SHA:openapi.json" 2>/dev/null; then
+            git show "$BASE_SHA:openapi.json" > base-openapi.json
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Base openapi.json fetched from $BASE_SHA."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Base branch has no openapi.json; skipping breaking-change diff."
+          fi
+
+      # ---- 4. Breaking-change diff (the headline gate) -------------------------
+      # `fail-on: ERR` makes oasdiff exit non-zero on any breaking change. We run
+      # it with continue-on-error so we can ALWAYS post the notification comment
+      # first, then decide pass/fail ourselves (honouring the override label).
+      - name: oasdiff breaking-change check
+        id: oasdiff
+        if: steps.base.outputs.exists == 'true'
+        continue-on-error: true
+        uses: oasdiff/oasdiff-action/breaking@1d160e38379728af331e223ae2ba978046283b4d # v0.0.50
+        with:
+          base: base-openapi.json
+          revision: openapi.json
+          fail-on: ERR
+          flatten-allof: 'true'
+          output-to-file: oasdiff-breaking.txt
+
+      # Human-readable full change list (additive + breaking) for the comment body.
+      - name: oasdiff full changelog
+        id: changelog
+        if: steps.base.outputs.exists == 'true'
+        continue-on-error: true
+        uses: oasdiff/oasdiff-action/diff@1d160e38379728af331e223ae2ba978046283b4d # v0.0.50
+        with:
+          base: base-openapi.json
+          revision: openapi.json
+          format: text
+          flatten-allof: 'true'
+          output-to-file: oasdiff-changelog.txt
+
+      # ---- 5. Notification: post / update a single PR comment ------------------
+      - name: Post API-change notification comment
+        if: steps.base.outputs.exists == 'true'
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        with:
+          script: |
+            const fs = require('fs');
+            const read = (p) => { try { return fs.readFileSync(p, 'utf8').trim(); } catch { return ''; } };
+
+            const breakingReport = read('oasdiff-breaking.txt');
+            const changelog = read('oasdiff-changelog.txt');
+            const isBreaking = '${{ steps.oasdiff.outcome }}' === 'failure';
+
+            const labels = (context.payload.pull_request.labels || []).map(l => l.name);
+            const overridden = labels.includes('breaking-change-ok') || labels.includes('api-break');
+
+            const trunc = (s, n) => (s && s.length > n) ? s.slice(0, n) + '\n…(truncated)…' : s;
+
+            let header;
+            if (isBreaking && overridden) {
+              header = '## ⚠️ Breaking OpenAPI change (override label present)\n' +
+                'This PR changes the HTTP contract in a **breaking** way, but a ' +
+                '`breaking-change-ok` / `api-break` label is set, so the gate is allowed to pass.';
+            } else if (isBreaking) {
+              header = '## ❌ Breaking OpenAPI change detected\n' +
+                'This PR makes a **breaking** change to the HTTP contract. Add the ' +
+                '`breaking-change-ok` (or `api-break`) label to merge intentionally, ' +
+                'otherwise adjust the contract to stay backward-compatible.';
+            } else {
+              header = '## ✅ No breaking OpenAPI changes\n' +
+                'The HTTP contract is backward-compatible with the base branch.';
+            }
+
+            let body = `<!-- oasdiff-api-contract -->\n${header}\n`;
+            if (breakingReport) {
+              body += `\n### Breaking changes\n\`\`\`\n${trunc(breakingReport, 30000)}\n\`\`\`\n`;
+            }
+            if (changelog) {
+              body += `\n<details><summary>Full API changelog</summary>\n\n\`\`\`\n${trunc(changelog, 30000)}\n\`\`\`\n</details>\n`;
+            }
+
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+            const marker = '<!-- oasdiff-api-contract -->';
+            const { data: comments } = await github.rest.issues.listComments({ owner, repo, issue_number });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+      # ---- 6. Enforce the gate (after the comment is posted) -------------------
+      # Fail the job on a breaking change UNLESS the override label is present.
+      - name: Enforce breaking-change gate
+        if: steps.base.outputs.exists == 'true'
+        env:
+          OUTCOME: ${{ steps.oasdiff.outcome }}
+          LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
+        run: |
+          set -euo pipefail
+          if [ "$OUTCOME" = "failure" ]; then
+            case ",$LABELS," in
+              *,breaking-change-ok,*|*,api-break,*)
+                echo "::warning::Breaking OpenAPI change detected, but an override label is set — allowing." ;;
+              *)
+                echo "::error::Breaking OpenAPI change detected. Add the 'breaking-change-ok' or 'api-break' label to override."
+                exit 1 ;;
+            esac
+          else
+            echo "No breaking OpenAPI changes."
+          fi
