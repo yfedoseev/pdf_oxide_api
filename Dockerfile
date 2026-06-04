@@ -27,16 +27,28 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 # ---- Stage 2: cook deps, then build the app --------------------------------
 FROM chef AS builder
-ARG TARGET=x86_64-unknown-linux-musl
-RUN rustup target add ${TARGET}
+# Each platform leg runs under QEMU as its OWN arch, so build NATIVELY for that
+# arch — never cross-compile. A hardcoded x86_64 target made the arm64 leg
+# cross-compile to x86_64 and fail once a C dependency (libmimalloc-sys, pulled
+# in by pdf_oxide 0.3.60) needed an x86_64-linux-musl-gcc that isn't installed.
+# TARGETARCH is a BuildKit automatic build arg (amd64 | arm64); map it to the
+# matching Rust musl triple, recorded in /tmp/rust-target for reuse by the
+# cook + build steps below.
+ARG TARGETARCH
+RUN case "${TARGETARCH}" in \
+      amd64) echo x86_64-unknown-linux-musl ;; \
+      arm64) echo aarch64-unknown-linux-musl ;; \
+      *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac > /tmp/rust-target && rustup target add "$(cat /tmp/rust-target)"
 COPY --from=planner /app/recipe.json recipe.json
 # Cache-mounted registry; cook builds ONLY deps -> cached unless Cargo.lock moves.
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo chef cook --release --target ${TARGET} --recipe-path recipe.json
+    cargo chef cook --release --target "$(cat /tmp/rust-target)" --recipe-path recipe.json
 COPY . .
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    cargo build --release --target ${TARGET} --locked --bin pdf_oxide_api && \
-    cp target/${TARGET}/release/pdf_oxide_api /app/pdf_oxide_api
+    TARGET="$(cat /tmp/rust-target)" && \
+    cargo build --release --target "${TARGET}" --locked --bin pdf_oxide_api && \
+    cp "target/${TARGET}/release/pdf_oxide_api" /app/pdf_oxide_api
 
 # ---- Stage 3: minimal runtime ----------------------------------------------
 # Chainguard static: CA certs + tzdata, nonroot 65532, no shell, no pkg mgr.
