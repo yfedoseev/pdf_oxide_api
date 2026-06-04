@@ -323,11 +323,12 @@ async fn forms_fill_returns_pdf() {
 /// mojibake) and the filled form is re-readable. The mojibake failure (the
 /// issue-#611 / Stirling-PDF case) was fixed upstream in `pdf_oxide` 0.3.59.
 ///
-/// We assert by VALUE, not by field name: 0.3.59 round-trips field *values*
-/// verbatim but still drops the field `/T` names on save, so the read-back
-/// fields carry the correct values under empty names. Value fidelity (no
-/// mojibake) is the #611 contract; field-name preservation is a separate,
-/// lesser engine limitation tracked upstream.
+/// We assert by NAME *and* value. 0.3.59 round-tripped values verbatim but
+/// dropped the field `/T` names on save (orphaning a bare object — issue #1),
+/// so the read-back fields carried the right values under empty names. 0.3.60
+/// writes the value in place on the existing field/widget object, preserving
+/// its `/T` name, so a reader keying widgets by name (PyMuPDF, the #1 repro)
+/// sees the value on the correct field. Both must now hold.
 #[tokio::test]
 async fn form_fill_roundtrip_no_mojibake() {
     // (full_name, city) samples whose PDF text strings all require UTF-16BE.
@@ -357,19 +358,28 @@ async fn form_fill_roundtrip_no_mojibake() {
             .await;
         fields.assert_status_ok();
         let v: Value = fields.json();
-        let values: Vec<String> = v["fields"]
+        let by_name: std::collections::HashMap<String, String> = v["fields"]
             .as_array()
             .unwrap()
             .iter()
-            .map(|f| f["value"].as_str().unwrap_or("").to_string())
+            .map(|f| {
+                (
+                    f["name"].as_str().unwrap_or("").to_string(),
+                    f["value"].as_str().unwrap_or("").to_string(),
+                )
+            })
             .collect();
-        assert!(
-            values.contains(&full_name.to_string()),
-            "full_name {full_name:?} did not round-trip verbatim; got {values:?}"
+        // issue #1: the value must land on the correctly-NAMED field (the real
+        // widget a reader displays), not on an orphaned, name-less object.
+        assert_eq!(
+            by_name.get("full_name").map(String::as_str),
+            Some(full_name),
+            "full_name {full_name:?} did not round-trip on its named field; got {by_name:?}"
         );
-        assert!(
-            values.contains(&city.to_string()),
-            "city {city:?} did not round-trip verbatim; got {values:?}"
+        assert_eq!(
+            by_name.get("city").map(String::as_str),
+            Some(city),
+            "city {city:?} did not round-trip on its named field; got {by_name:?}"
         );
     }
 }
