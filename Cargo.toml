@@ -33,7 +33,10 @@ otel = []
 [dependencies]
 # --- the library this service wraps (default features only: pure-Rust,
 # static-musl friendly; NO ocr/ml/gpu/rendering) ---
-pdf_oxide = "0.3"
+# 0.3.60 floor: fixes the form-fill save path (issue #1) — values are written
+# in place on the existing field/widget object, preserving the `/T` field
+# names and `/Fields`/`/Annots` membership instead of orphaning a bare object.
+pdf_oxide = "0.3.60"
 
 # --- HTTP framework + runtime ---
 axum = { version = "0.8", features = ["multipart", "macros"] }

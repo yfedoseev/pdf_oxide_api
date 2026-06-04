@@ -1575,9 +1575,9 @@ checksum = "384b8ab6d37215f3c5301a95a4accb5d64aa607f1fcb26a11b5303878451b4fe"
 
 [[package]]
 name = "pdf_oxide"
-version = "0.3.59"
+version = "0.3.60"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "971e7e9cd5dafa2242fb48e9cea232a4c1f00d9310a87d18c27cb44786a3cd08"
+checksum = "9fe6f0b96883f92c6e958a14114a530263b893913a57d1783515982c0472dd16"
 dependencies = [
  "aes",
  "base64",
