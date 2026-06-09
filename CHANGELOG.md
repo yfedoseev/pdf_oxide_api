@@ -4,11 +4,29 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-The API carries its own SemVer; the embedded `pdf_oxide` engine version is
-metadata (reported by `GET /version` and the `fyi.oxide.pdf_oxide.version`
-image label), not the API's version number.
+The API release version **mirrors the embedded `pdf_oxide` engine version** it
+links: each engine bump re-versions the API to the same number. The engine
+version is also surfaced as metadata by `GET /version` and the
+`fyi.oxide.pdf_oxide.version` image label.
 
 ## [Unreleased]
+
+## [0.3.61] - 2026-06-09
+
+> Engine bump to `pdf_oxide` 0.3.61 and adoption of version mirroring: the API
+> release version now tracks the embedded engine version. `GET /version` and
+> extract responses report the exact linked engine version instead of a
+> hardcoded major-only string.
+
+### Changed
+- Bumped the embedded `pdf_oxide` engine to **0.3.61**.
+- Adopted a version-mirroring policy: the API release version now tracks the
+  `pdf_oxide` version it links (this release jumps `0.1.0` → `0.3.61`).
+
+### Fixed
+- `GET /version` and extract responses now report the **exact** linked engine
+  version (e.g. `0.3.61`) instead of a hardcoded major-only `"0.3"` string;
+  `PDF_OXIDE_VERSION` is sourced from `pdf_oxide::VERSION`. (#4)
 
 ## [0.1.0] - 2026-06-03
 
@@ -57,5 +75,6 @@ image label), not the API's version number.
   `openapi.yaml` (OpenAPI 3.1) + served `/openapi.json`, and an mdBook docs
   site.
 
-[Unreleased]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.61...HEAD
+[0.3.61]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.1.0...v0.3.61
 [0.1.0]: https://github.com/yfedoseev/pdf_oxide_api/releases/tag/v0.1.0

@@ -16,10 +16,11 @@ use serde_json::Value;
 
 use crate::error::ApiError;
 
-/// The pdf_oxide major version this binary is built against. Surfaced by
-/// `/version` and in some responses — the contract the Docker auto-rebuild
-/// relies on.
-pub const PDF_OXIDE_VERSION: &str = "0.3";
+/// The exact pdf_oxide version this binary is built against. Surfaced by
+/// `/version` and in some responses. Sourced directly from the linked engine
+/// (`env!("CARGO_PKG_VERSION")` inside pdf_oxide) so it always reports the
+/// resolved patch version (e.g. `0.3.61`), never a stale major-only string.
+pub const PDF_OXIDE_VERSION: &str = pdf_oxide::VERSION;
 
 /// Open a PDF from bytes, mapping any parse error to the safe `ApiError`.
 pub fn open_doc(bytes: Vec<u8>) -> Result<pdf_oxide::PdfDocument, ApiError> {
