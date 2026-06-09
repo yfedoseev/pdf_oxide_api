@@ -198,7 +198,8 @@ async fn version_reports_engine() {
     let v: Value = r.json();
     assert_eq!(v["service"], "pdf_oxide_api");
     assert_eq!(v["version"], env!("CARGO_PKG_VERSION"));
-    assert!(v["pdf_oxide_version"].is_string());
+    // Must report the exact linked engine version, not a major-only string (#4).
+    assert_eq!(v["pdf_oxide_version"], pdf_oxide::VERSION);
 }
 
 // --------------------------------------------------------------------------
