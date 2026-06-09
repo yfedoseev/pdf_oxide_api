@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "pdf_oxide_api",
-    "version": "0.1.0",
+    "version": "0.3.61",
     "description": "Stateless single-shot REST service wrapping the pdf_oxide library. No PDF data is persisted server-side. PDF in -> result out.\n\nEvery data endpoint accepts the PDF in one of three encodings: multipart/form-data (a `file` part), application/json (a base64 PDF in `pdf_base64`, or `pdfs_base64` for merge), or a raw PDF body (`application/pdf`). Endpoint parameters (`pages`, `detect_headings`, `flatten`) are sent as top-level multipart text parts, top-level JSON keys, or URL query parameters — they are NOT nested under an `options` object.\n\nThis hand-authored document is the source-of-truth contract; the running service serves an identical copy at /openapi.json and /openapi.yaml.\n",
     "license": {
       "name": "MIT OR Apache-2.0"
