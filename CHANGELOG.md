@@ -11,6 +11,25 @@ version is also surfaced as metadata by `GET /version` and the
 
 ## [Unreleased]
 
+## [0.3.63] - 2026-06-11
+
+> Engine bump to `pdf_oxide` 0.3.63 (version-mirroring release). The API
+> release version, the pinned engine, the OpenAPI contract, `llms.txt`, and
+> this changelog are now verified in lock-step by a CI version-sync gate so a
+> bump can never again ship with a half-updated set of files.
+
+### Changed
+- Bumped the embedded `pdf_oxide` engine to **0.3.63**; the mirrored API
+  release version moves `0.3.61` → `0.3.63` in step.
+
+### Added
+- CI **version-sync gate** (`.github/scripts/check-version-sync.sh`, run as the
+  `version-sync` job in `ci.yml`): asserts that `Cargo.toml` (package version +
+  `pdf_oxide` dependency), `Cargo.lock`, `openapi.yaml`, `openapi.json`,
+  `llms.txt`, and the top `CHANGELOG.md` entry all carry the **same** version
+  string. Catches the drift class from the 0.3.61 bump, where the manifest was
+  updated but `openapi.*` and `llms.txt` were left behind (fixed in #6).
+
 ## [0.3.61] - 2026-06-09
 
 > Engine bump to `pdf_oxide` 0.3.61 and adoption of version mirroring: the API
@@ -75,6 +94,7 @@ version is also surfaced as metadata by `GET /version` and the
   `openapi.yaml` (OpenAPI 3.1) + served `/openapi.json`, and an mdBook docs
   site.
 
-[Unreleased]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.61...HEAD
+[Unreleased]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.63...HEAD
+[0.3.63]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.61...v0.3.63
 [0.3.61]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.1.0...v0.3.61
 [0.1.0]: https://github.com/yfedoseev/pdf_oxide_api/releases/tag/v0.1.0

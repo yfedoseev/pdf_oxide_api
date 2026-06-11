@@ -93,6 +93,21 @@ jobs:
           chmod +x .github/scripts/extract-release-notes.sh
           .github/scripts/extract-release-notes.sh --check "$V"
 
+  version-sync:
+    name: Version sync (engine == manifest == contract == docs)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # This project mirrors the wrapped engine: the API release version, the
+      # pinned pdf_oxide dependency, Cargo.lock, openapi.yaml/json, llms.txt, and
+      # the top CHANGELOG entry must ALL be the same string. A bump that updates
+      # the manifest but forgets the OpenAPI contract or llms.txt (as commit
+      # 48a8cab did) fails here instead of shipping a mislabeled image.
+      - name: Assert all version locations agree
+        run: |
+          chmod +x .github/scripts/check-version-sync.sh
+          .github/scripts/check-version-sync.sh
+
   deny:
     name: Dependency Check (cargo-deny)
     runs-on: ubuntu-latest

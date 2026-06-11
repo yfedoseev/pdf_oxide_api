@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: pdf_oxide_api
-  version: 0.3.61
+  version: 0.3.63
   description: >
     Stateless single-shot REST service wrapping the pdf_oxide library.
     No PDF data is persisted server-side. PDF in -> result out.
