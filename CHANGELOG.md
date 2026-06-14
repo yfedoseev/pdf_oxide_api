@@ -11,6 +11,16 @@ version is also surfaced as metadata by `GET /version` and the
 
 ## [Unreleased]
 
+## [0.3.64] - 2026-06-14
+
+> Engine bump to `pdf_oxide` 0.3.64 (version-mirroring release). The API
+> release version, the pinned engine, the OpenAPI contract, `llms.txt`, and
+> this changelog move in lock-step, verified by the CI version-sync gate.
+
+### Changed
+- Bumped the embedded `pdf_oxide` engine to **0.3.64**; the mirrored API
+  release version moves `0.3.63` → `0.3.64` in step.
+
 ## [0.3.63] - 2026-06-11
 
 > Engine bump to `pdf_oxide` 0.3.63 (version-mirroring release). The API
@@ -94,7 +104,8 @@ version is also surfaced as metadata by `GET /version` and the
   `openapi.yaml` (OpenAPI 3.1) + served `/openapi.json`, and an mdBook docs
   site.
 
-[Unreleased]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.63...HEAD
+[Unreleased]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.64...HEAD
+[0.3.64]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.63...v0.3.64
 [0.3.63]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.3.61...v0.3.63
 [0.3.61]: https://github.com/yfedoseev/pdf_oxide_api/compare/v0.1.0...v0.3.61
 [0.1.0]: https://github.com/yfedoseev/pdf_oxide_api/releases/tag/v0.1.0

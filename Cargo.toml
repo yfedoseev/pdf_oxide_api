@@ -2,7 +2,7 @@
 name = "pdf_oxide_api"
 # Mirrors the wrapped engine version: the API release version tracks the
 # pdf_oxide version it links (see the `pdf_oxide` dependency below).
-version = "0.3.63"
+version = "0.3.64"
 edition = "2021"
 # MSRV floor. axum 0.8 needs >= 1.80; 1.82 gives headroom. The pinned
 # toolchain (rust-toolchain.toml) and the Docker builder use a newer stable.
@@ -38,7 +38,7 @@ otel = []
 # 0.3.60 floor: fixes the form-fill save path (issue #1) — values are written
 # in place on the existing field/widget object, preserving the `/T` field
 # names and `/Fields`/`/Annots` membership instead of orphaning a bare object.
-pdf_oxide = "0.3.63"
+pdf_oxide = "0.3.64"
 
 # --- HTTP framework + runtime ---
 axum = { version = "0.8", features = ["multipart", "macros"] }
