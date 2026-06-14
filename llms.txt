@@ -9,11 +9,11 @@
 > PDF in -> result out. Nothing is stored: no database, no temp files held
 > between requests, no telemetry. Safe-by-default, self-hosted, confidential.
 > Single static Rust binary in a distroless container (~14.5 MB image).
-> MIT / Apache-2.0 license. Current version: 0.3.63. Engine: pdf_oxide 0.3.63.
+> MIT / Apache-2.0 license. Current version: 0.3.64. Engine: pdf_oxide 0.3.64.
 
 - Run (GHCR): `docker run --rm -p 8080:8080 ghcr.io/yfedoseev/pdf_oxide:latest`
 - Run (Docker Hub): `docker run --rm -p 8080:8080 yfedoseev/pdf_oxide:latest`
-- Pull: `docker pull ghcr.io/yfedoseev/pdf_oxide:0.3.63` (or `docker pull yfedoseev/pdf_oxide:0.3.63`)
+- Pull: `docker pull ghcr.io/yfedoseev/pdf_oxide:0.3.64` (or `docker pull yfedoseev/pdf_oxide:0.3.64`)
 - OpenAPI spec (source of truth, repo root): https://raw.githubusercontent.com/yfedoseev/pdf_oxide_api/main/openapi.yaml
 - OpenAPI spec (served by the running container): http://localhost:8080/openapi.json and /openapi.yaml
 - Interactive API reference (served by the running container): http://localhost:8080/docs
